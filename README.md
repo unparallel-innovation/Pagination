@@ -13,6 +13,7 @@ Features
 + **Multiple collections per page**. Each Pagination instance runs independently. You can even create multiple paginations for one collection on a single page.
 + **Bootstrap 3 and 4 compatible navigation template**. Blaze template for a bootstrap 3 and 4 styled paginator.
 + **Bootstrap 3 and 4 compatible navigation react class**. ReactJS class for a bootstrap 3 and 4 styled paginator.
++ **Supports aggregation queries on publication**. Support added by [tunguska:reactive-aggregate](https://atmospherejs.com/tunguska/reactive-aggregate) package
 
 # Installation
 ```meteor add kurounin:pagination```
@@ -41,13 +42,31 @@ import { publishPagination } from 'meteor/kurounin:pagination';
 publishPagination(MyCollection);
 ```
 
-Optionally you can provide a set of filters on the server-side or even dynamic filters, which can not be overridden.
+Optionally you can provide a set of filters on the server-side, even dynamic filters which can not be overridden and an aggregation pipeline  
 There's also the option of providing a transformation filter function to validate the client filters (e.g. server/publications.js):
 ```js
 publishPagination(MyCollection, {
     filters: {is_published: true},
     dynamic_filters: function () {
         return {user_id: this.userId};
+    },
+    //Aggregation support is useful when related sets of data from multiple collections are needed on a given page
+    aggregate: {
+        pipeline: [
+            {
+                $lookup:{
+                    from: "myRelatedCollection",
+                    localField: "relatedIds",
+                    foreignField: "_id",
+                    as:"_relatedDocs"
+                }
+            }
+        ],
+        //By default the aggregate only re-runs when collection "MyCollection" changes
+        //To trigger a re-run when collection "MyRelatedCollection" changes you must define an observer
+        observers:[
+            MyRelatedCollection.find()
+        ]
     },
     transform_filters: function (filters, options) {
         // called after filters & dynamic_filters

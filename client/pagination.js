@@ -55,7 +55,8 @@ class PaginationFactory {
         skip: 0,
         sort: { _id: 1 },
         reactive: true,
-        debug: false
+        debug: false,
+        aggregateProps: {}
       },
       settingsIn || {}
     );
@@ -69,7 +70,9 @@ class PaginationFactory {
     if (!this.perPage()) {
       this.perPage(settings.perPage);
     }
-
+    if (!this.aggregateProps()) {
+      this.aggregateProps(settings.aggregateProps);
+    }
     if (!this.filters()) {
       this.filters(settings.filters);
     }
@@ -98,7 +101,8 @@ class PaginationFactory {
         sort: this.sort(),
         skip: (this.currentPage() - 1) * this.perPage() + this.skip(),
         limit: this.perPage(),
-        reactive: settings.reactive
+        reactive: settings.reactive,
+        aggregateProps: this.aggregateProps()
       };
 
       if (this.debug()) {
@@ -199,6 +203,14 @@ class PaginationFactory {
       this.settings.set('perPage', perPage);
     } else {
       return this.settings.get('perPage');
+    }
+  }
+
+  aggregateProps(aggregateProps) {
+    if (arguments.length === 1) {
+      this.settings.set('aggregateProps', aggregateProps);
+    } else {
+      return this.settings.get('aggregateProps');
     }
   }
 

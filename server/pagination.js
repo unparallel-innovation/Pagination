@@ -1,10 +1,25 @@
 import { _ } from 'meteor/underscore';
 import { Meteor } from 'meteor/meteor';
 import { check, Match } from 'meteor/check';
+import { ReactiveAggregate } from 'meteor/tunguska:reactive-aggregate';
+import { Promise } from 'meteor/promise';
 
 const countCollectionName = 'pagination-counts';
 
+//It Allows to clone a collection instance with the methods required for ReactiveAggregate, adding a new schema
+function AggregationCollection(collection, schema){
+  this._transform = collection._transform
+  this._collection = collection._collection
+  this._name = collection._name
+  this.schema = schema?schema:collection.schema
+}
+
+AggregationCollection.prototype = Object.create(Mongo.Collection.prototype);
+
+
+
 export function publishPagination(collection, settingsIn) {
+
   const settings = _.extend(
     {
       name: collection._name,
@@ -16,7 +31,6 @@ export function publishPagination(collection, settingsIn) {
     },
     settingsIn || {}
   );
-
   if (typeof settings.filters !== 'object') {
     // eslint-disable-next-line max-len
     throw new Meteor.Error(4001, 'Invalid filters provided. Server side filters need to be an object!');
@@ -32,11 +46,13 @@ export function publishPagination(collection, settingsIn) {
   }
 
   Meteor.publish(settings.name, function addPub(query = {}, optionsInput = {}) {
+    console.log("Meteor.publish")
     check(query, Match.Optional(Object));
     check(optionsInput, Match.Optional(Object));
 
     const self = this;
     let options = optionsInput;
+
     let findQuery = {};
     let filters = [];
 
@@ -85,11 +101,73 @@ export function publishPagination(collection, settingsIn) {
         JSON.stringify(options)
       );
     }
+    if( settings.aggregate && (Array.isArray(settings.aggregate.pipeline) || typeof settings.aggregate.pipeline == "function")){
 
-    if (!options.reactive) {
+      let observers = []
+      if(Array.isArray(settings.aggregate.observers) && options.reactive){
+        observers = settings.aggregate.observers
+      }
+      const subscriptionId = `sub_${self._subscriptionId}`;
+      const pipeline = [
+           ...Array.isArray(settings.aggregate.pipeline)?settings.aggregate.pipeline:settings.aggregate.pipeline(options.aggregateProps)
+      ]
+      const sortedById = options.sort && options.sort["_id"]
+      console.log("sortedById",sortedById)
+      pipeline.push({$match:findQuery})
+      const pipelineWithFilter = [...pipeline]
+      sortedById && pipeline.push({$addFields:{_id:{$toString:"$_id"}}})
+      options.sort && pipeline.push({$sort:options.sort})
+      options.fields && Object.keys(options.fields).length > 0 && pipeline.push({$project:options.fields})
+      options.skip && pipeline.push({$skip:options.skip})
+      options.limit && pipeline.push({$limit:options.limit})
+      pipeline.push({$addFields:{[subscriptionId]:1}})
+      !sortedById && pipeline.push({$addFields:{_id:{$toString:"$_id"}}})
+      function getCount(){
+        const pipeline = [...pipelineWithFilter, {$project:{_id:1}}]
+        const docs = Promise.await(collection.rawCollection().aggregate(pipeline).toArray());
+        return docs.length
+      }
+
+      const aggregationCollection = new AggregationCollection(collection, settings.aggregate.schema)
+      try{
+        ReactiveAggregate(self, aggregationCollection, pipeline,{
+          capturePipeline(docs) {
+
+            console.log("capturePipeline", docs.length)
+            //if(!options.sort || options.sort["_id"] != -1){
+            console.log("recount")
+
+
+            self.added(countCollectionName, subscriptionId, {count:getCount() });
+            /*Meteor.setTimeout(()=>{
+
+              console.log("add" )
+              _.each(docs,(doc)=>{
+                const n = Math.random()
+                self.changed(collection._name, doc._id, {n});
+              })
+
+            },2000)*/
+
+            //}
+
+
+          },
+          noAutomaticObserver:!options.reactive,
+          debounceDelay: 100,
+          debounceCount: 100000,
+          observers
+        })
+      }catch(err){
+        console.log("error",err)
+      }
+
+
+    }else if (!options.reactive) {
       const subscriptionId = `sub_${self._subscriptionId}`;
       const count = collection.find(findQuery, {fields: {_id: 1}}).count();
-      const docs = collection.find(findQuery, options).fetch();
+      const {fields, sort, skip, limit} = options
+      const docs = collection.find(findQuery, {fields, sort, skip, limit}).fetch();
 
       self.added(countCollectionName, subscriptionId, {count: count});
 
@@ -98,8 +176,10 @@ export function publishPagination(collection, settingsIn) {
 
         self.changed(collection._name, doc._id, {[subscriptionId]: 1});
       });
+      self.ready();
     } else {
       const subscriptionId = `sub_${self._subscriptionId}`;
+      console.log("find")
       const countCursor = collection.find(findQuery, {fields: {_id: 1}});
 
       self.added(countCollectionName, subscriptionId, {count: countCursor.count()});
@@ -110,10 +190,10 @@ export function publishPagination(collection, settingsIn) {
       const countTimer = Meteor.setInterval(function() {
         updateCount();
       }, settings.countInterval);
-      const handle = collection.find(findQuery, options).observeChanges({
+      const {fields, sort, skip, limit} = options
+      const handle = collection.find(findQuery, {fields, sort, skip, limit}).observeChanges({
         added(id, fields) {
           self.added(collection._name, id, fields);
-
           self.changed(collection._name, id, {[subscriptionId]: 1});
           updateCount();
         },
@@ -130,9 +210,10 @@ export function publishPagination(collection, settingsIn) {
         Meteor.clearTimeout(countTimer);
         handle.stop();
       });
+      self.ready();
     }
 
-    self.ready();
+
   });
 }
 

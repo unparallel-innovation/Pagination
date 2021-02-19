@@ -1,7 +1,7 @@
 Package.describe({
   name: 'kurounin:pagination',
   summary: 'Meteor pagination done right. Usable in ReactJS or Blaze templates.',
-  version: '1.2.0',
+  version: '1.3.0',
   git: 'https://github.com/Kurounin/Pagination.git',
   documentation: 'README.md',
 });
@@ -14,6 +14,8 @@ Package.onUse((api) => {
     'check',
     'underscore',
     'mongo',
+    'tunguska:reactive-aggregate@1.3.5',
+     'promise'
   ]);
 
   api.mainModule('server/pagination.js', 'server');

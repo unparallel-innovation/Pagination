@@ -52,21 +52,16 @@ publishPagination(MyCollection, {
     },
     //Aggregation support is useful when related sets of data from multiple collections are needed on a given page
     aggregate: {
-        pipeline: [
-            {
-                $lookup:{
-                    from: "myRelatedCollection",
-                    localField: "relatedIds",
-                    foreignField: "_id",
-                    as:"_relatedDocs"
-                }
-            }
-        ],
+        pipeline: (props)=>([
+        	//pipeline stages goes here
+        ]),
         //By default the aggregate only re-runs when collection "MyCollection" changes
-        //To trigger a re-run when collection "MyRelatedCollection" changes you must define an observer
+        //To trigger a re-run when other collections changes you must define an observer for each additional collection
         observers:[
-            MyRelatedCollection.find()
-        ]
+            AnotherCollection.find()
+        ],
+        //A schema is required for ObjectIDs fields, a detailed example is given on Aggregation section
+        schema:new SimpleSchema(/*...*/)
     },
     transform_filters: function (filters, options) {
         // called after filters & dynamic_filters
@@ -95,6 +90,8 @@ publishPagination(MyCollection, {
 });
 
 ```
+
+
 
 For Blaze template
 --------------------------------------------------
@@ -196,6 +193,55 @@ MyListPage = React.createClass({
 
 **For Meteor 1.3+ [react-bootstrap-pagination](https://www.npmjs.com/package/react-bootstrap-pagination) npm package is needed for paginator**
 
+#Aggregation
+
+This example show how o publish relational data using an aggregate with a `$lookup` pipeline stage
+
+**note:** When using ObjectIDs since Meteor doesn't have native support for aggregation, any ObjectID field (different than _id) sent to the client will not be displayed correctly  
+To ensure that those fields are displayed correctly a schema to ObjectID fields must be defined
+
+
+On Server
+--------------------------------------------------
+
+```js
+publishPagination(MyCollection, {
+    aggregate: {
+        pipeline: (props)=>(
+            [
+                {
+                    $lookup:{
+                        from: "myRelatedCollection",
+                        localField: props.lookupField,
+                        foreignField: "_id",
+                        as:"_relatedDocs"
+                    }
+                }
+            ]
+        ),
+        //By default the aggregate only re-runs when collection "MyCollection" changes
+        //To trigger a re-run when collection "MyRelatedCollection" changes you must define an observer
+        observers:[
+            MyRelatedCollection.find()
+        ],
+        schema:new SimpleSchema({
+            "_relatedDocs": {type: Array},
+            "_relatedDocs.$":{type: Object},
+            "_relatedDocs.$._id":{type: Mongo.ObjectID}
+        })
+    }
+})
+
+```
+
+On Client
+--------------------------------------------------
+```js
+new Meteor.Pagination(MyCollection,{
+    aggregateProps: {lookupField: "relatedIds"}
+})
+```
+
 
 # Demo project
 For an example on how this package can be implemented check [the pagination example project](https://github.com/Kurounin/PaginationExample) or [the react pagination example project](https://github.com/Kurounin/PaginationReactExample).
@@ -208,6 +254,10 @@ You can also checkout [this example application in React](https://github.com/mgs
 * `name`: set the publication name (defaults to **collection name**; *needs to be unique, to not collide with other publications*)
 * `filters`: provide a set of filters on the server-side, which can not be overridden (defaults to **{}**, meaning no filters)
 * `dynamic_filters`: provide a function which returns additional filters to be applied (**this** is the publication; receives no other parameters)
+* `aggregate`: object describing the aggregation to be used on the publication
+    * `pipeline`: the aggregation pipeline to execute
+    * `observers`: an array of cursors. Each cursor is the result of a `Collection.find()`. Each of the supplied cursors will have an observer attached, so any change detected (based on the selection criteria in the `find`) will re-run the aggregation pipeline
+    * `schema`: a SimplSchema instance required for ObjectIDs fields of aggregation result
 * `transform_filters`: provide a function which returns the modified filters object to be applied (**this** is the publication; receives the current **filters** as an array containing the client & server defined filters and **options** as parameters)
 * `transform_options`: provide a function which returns the modified options object to be applied (**this** is the publication; receives the current **filters** as an array containing the client & server defined filters and **options** as parameters)
 * `countInterval`: set the interval in ms at which the subscription count is updated (defaults to **10000**, meaning every 10s)
@@ -222,6 +272,7 @@ You can also checkout [this example application in React](https://github.com/mgs
 * `filters`: filters to be applied to the subscription (defaults to **{}**, meaning no filters)
 * `fields`: fields to be returned (defaults to **{}**, meaning all fields)
 * `sort`: set the sorting for retrieved documents (defaults to **{_id: -1}**)
+* `aggregateProps`: set the props to be used on aggregation pipeline (defaults to **{}**)
 * `reactive`: set the subscription reactivity, allowing to only retrieve the initial results when set to false (defaults to **true**)
 * `debug`: console logs the query and options used when performing the find (defaults to **false**)
 * `connection`: the server connection that will manage this collection. Pass the return value of calling DDP.connect to specify a different server. (defaults to **Meteor.connection**)
@@ -235,6 +286,7 @@ You can also checkout [this example application in React](https://github.com/mgs
 * `filters([Object])`: get/set the current filters
 * `fields([Object])`: get/set the retrieved fields
 * `sort([Object])`: get/set the sorting order
+* `aggregateProps(Object)`: get/set the aggregate props
 * `debug([boolean])`: get/set the debug
 * `totalItems()`: get the total number of documents
 * `totalPages()`: get the total number of pages
@@ -273,8 +325,8 @@ Available class properties are:
 * `limit`: maximum number of page links to display (defaults to **10**)
 * `containerClass`: optional container class for the paginator
 
-
 ### Packages used as inspiration:
 
- * [alethes:pages](https://atmospherejs.com/alethes/pages) for pagination instantiation
- * [aida:pagination](https://atmospherejs.com/aida/pagination) for bootstrap paginator template
+* [alethes:pages](https://atmospherejs.com/alethes/pages) for pagination instantiation
+* [aida:pagination](https://atmospherejs.com/aida/pagination) for bootstrap paginator template
+* [tunguska:reactive-aggregate](https://atmospherejs.com/tunguska/reactive-aggregate) Provides aggregation support to this library

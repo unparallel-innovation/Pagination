@@ -13,7 +13,7 @@ Features
 + **Multiple collections per page**. Each Pagination instance runs independently. You can even create multiple paginations for one collection on a single page.
 + **Bootstrap 3 and 4 compatible navigation template**. Blaze template for a bootstrap 3 and 4 styled paginator.
 + **Bootstrap 3 and 4 compatible navigation react class**. ReactJS class for a bootstrap 3 and 4 styled paginator.
-+ **Supports aggregation queries on publication**. Support added by [tunguska:reactive-aggregate](https://atmospherejs.com/tunguska/reactive-aggregate) package
++ **Supports aggregation queries on publication**. Support added using [tunguska:reactive-aggregate](https://atmospherejs.com/tunguska/reactive-aggregate) package
 
 # Installation
 ```meteor add kurounin:pagination```
@@ -32,7 +32,6 @@ Features
 In your collections file (e.g. lib/collections.js):
 ```js
 MyCollection = new Meteor.Collection('myCollectionName');
-
 ```
 
 In your publications file (e.g. server/publications.js):
@@ -42,7 +41,7 @@ import { publishPagination } from 'meteor/kurounin:pagination';
 publishPagination(MyCollection);
 ```
 
-Optionally you can provide a set of filters on the server-side, even dynamic filters which can not be overridden and an aggregation pipeline  
+Optionally you can provide a set of filters on the server-side, a dynamic filters which can not be overridden and an aggregation pipeline  
 There's also the option of providing a transformation filter function to validate the client filters (e.g. server/publications.js):
 ```js
 publishPagination(MyCollection, {
@@ -197,9 +196,15 @@ MyListPage = React.createClass({
 
 This example show how o publish relational data using an aggregate with a `$lookup` pipeline stage
 
-**note:** When using ObjectIDs since Meteor doesn't have native support for aggregation, any ObjectID field (different than _id) sent to the client will not be displayed correctly  
+**note:** When using ObjectIDs since Meteor doesn't have native support for aggregation, any ObjectID field (different than _id) sent to the client will not be displayed correctly
+
 To ensure that those fields are displayed correctly a schema to ObjectID fields must be defined
 
+To enable this support the npm packages ``simpl-schema`` and ``lodash`` or ``lodash-es`` must be installed
+
+``meteor npm install simpl-schema``
+
+``meteor npm install lodash-es`` or ``meteor npm install lodash``
 
 On Server
 --------------------------------------------------
@@ -224,6 +229,7 @@ publishPagination(MyCollection, {
         observers:[
             MyRelatedCollection.find()
         ],
+        //If a schema is not defiend MyCollection.schema will be used
         schema:new SimpleSchema({
             "_relatedDocs": {type: Array},
             "_relatedDocs.$":{type: Object},

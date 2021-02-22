@@ -4,6 +4,9 @@ import { check, Match } from 'meteor/check';
 import { ReactiveAggregate } from 'meteor/tunguska:reactive-aggregate';
 import { Promise } from 'meteor/promise';
 
+const subscriptions = {}
+
+
 const countCollectionName = 'pagination-counts';
 
 //It Allows to clone a collection instance with the methods required for ReactiveAggregate, adding a new schema
@@ -112,7 +115,7 @@ export function publishPagination(collection, settingsIn) {
            ...Array.isArray(settings.aggregate.pipeline)?settings.aggregate.pipeline:settings.aggregate.pipeline(options.aggregateProps)
       ]
       const sortedById = options.sort && options.sort["_id"]
-      console.log("sortedById",sortedById)
+
       pipeline.push({$match:findQuery})
       const pipelineWithFilter = [...pipeline]
       sortedById && pipeline.push({$addFields:{_id:{$toString:"$_id"}}})
@@ -129,39 +132,28 @@ export function publishPagination(collection, settingsIn) {
       }
 
       const aggregationCollection = new AggregationCollection(collection, settings.aggregate.schema)
-      try{
-        ReactiveAggregate(self, aggregationCollection, pipeline,{
-          capturePipeline(docs) {
+      console.log("subscriptionId",subscriptionId)
 
-            console.log("capturePipeline", docs.length)
-            //if(!options.sort || options.sort["_id"] != -1){
-            console.log("recount")
+      ReactiveAggregate(self, aggregationCollection, pipeline,{
+        capturePipeline(docs) {
 
-
-            self.added(countCollectionName, subscriptionId, {count:getCount() });
-            /*Meteor.setTimeout(()=>{
-
-              console.log("add" )
-              _.each(docs,(doc)=>{
-                const n = Math.random()
-                self.changed(collection._name, doc._id, {n});
-              })
-
-            },2000)*/
-
-            //}
+          console.log("capturePipeline", docs.length)
+          self.added(countCollectionName, subscriptionId, {count:getCount() });
 
 
-          },
-          noAutomaticObserver:!options.reactive,
-          debounceDelay: 100,
-          debounceCount: 100000,
-          observers
-        })
-      }catch(err){
-        console.log("error",err)
-      }
+        },
+        noAutomaticObserver:!options.reactive,
+        debounceDelay: 100,
+        debounceCount: 100000,
+        observers
+      })
 
+
+
+      self.onStop(() => {
+        console.log("stop for " + subscriptionId)
+        delete subscriptions[subscriptionId]
+      })
 
     }else if (!options.reactive) {
       const subscriptionId = `sub_${self._subscriptionId}`;
@@ -179,7 +171,7 @@ export function publishPagination(collection, settingsIn) {
       self.ready();
     } else {
       const subscriptionId = `sub_${self._subscriptionId}`;
-      console.log("find")
+
       const countCursor = collection.find(findQuery, {fields: {_id: 1}});
 
       self.added(countCollectionName, subscriptionId, {count: countCursor.count()});

@@ -192,9 +192,9 @@ MyListPage = React.createClass({
 
 **For Meteor 1.3+ [react-bootstrap-pagination](https://www.npmjs.com/package/react-bootstrap-pagination) npm package is needed for paginator**
 
-#Aggregation
+# Aggregation
 
-This example show how o publish relational data using an aggregate with a `$lookup` pipeline stage
+This example show how to publish relational data using an aggregate with a `$lookup` pipeline stage
 
 **note:** When using ObjectIDs since Meteor doesn't have native support for aggregation, any ObjectID field (different than _id) sent to the client will not be displayed correctly
 

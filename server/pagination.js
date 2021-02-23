@@ -4,9 +4,6 @@ import { check, Match } from 'meteor/check';
 import { ReactiveAggregate } from 'meteor/tunguska:reactive-aggregate';
 import { Promise } from 'meteor/promise';
 
-const subscriptions = {}
-
-
 const countCollectionName = 'pagination-counts';
 
 //It Allows to clone a collection instance with the methods required for ReactiveAggregate, adding a new schema
@@ -19,7 +16,18 @@ function AggregationCollection(collection, schema){
 
 AggregationCollection.prototype = Object.create(Mongo.Collection.prototype);
 
+function getDbVersion(){
+  return Promise.await(new Promise(resolve=>{
+    const adminDb = MongoInternals.defaultRemoteCollectionDriver().mongo.db.admin()
+    adminDb.buildInfo( (err, info) => { resolve(info.version) })
+  }))
+}
 
+const dbVersionArray = getDbVersion().split(".").map(el=>Number(el))
+
+
+const addFieldsSupport = dbVersionArray[0] > 3  || dbVersionArray[0]==3 && dbVersionArray[1]>3
+const toStringSupport = dbVersionArray[0] > 3
 
 export function publishPagination(collection, settingsIn) {
 
@@ -49,7 +57,6 @@ export function publishPagination(collection, settingsIn) {
   }
 
   Meteor.publish(settings.name, function addPub(query = {}, optionsInput = {}) {
-    console.log("Meteor.publish")
     check(query, Match.Optional(Object));
     check(optionsInput, Match.Optional(Object));
 
@@ -118,13 +125,13 @@ export function publishPagination(collection, settingsIn) {
 
       pipeline.push({$match:findQuery})
       const pipelineWithFilter = [...pipeline]
-      sortedById && pipeline.push({$addFields:{_id:{$toString:"$_id"}}})
+      toStringSupport && sortedById && pipeline.push({$addFields:{_id:{$toString:"$_id"}}})
       options.sort && pipeline.push({$sort:options.sort})
       options.fields && Object.keys(options.fields).length > 0 && pipeline.push({$project:options.fields})
       options.skip && pipeline.push({$skip:options.skip})
       options.limit && pipeline.push({$limit:options.limit})
-      pipeline.push({$addFields:{[subscriptionId]:1}})
-      !sortedById && pipeline.push({$addFields:{_id:{$toString:"$_id"}}})
+      addFieldsSupport && pipeline.push({$addFields:{[subscriptionId]:1}})
+      toStringSupport && !sortedById && pipeline.push({$addFields:{_id:{$toString:"$_id"}}})
       function getCount(){
         const pipeline = [...pipelineWithFilter, {$project:{_id:1}}]
         const docs = Promise.await(collection.rawCollection().aggregate(pipeline).toArray());
@@ -132,28 +139,23 @@ export function publishPagination(collection, settingsIn) {
       }
 
       const aggregationCollection = new AggregationCollection(collection, settings.aggregate.schema)
-      console.log("subscriptionId",subscriptionId)
-
+      self.added(countCollectionName, subscriptionId, {count:getCount() });
       ReactiveAggregate(self, aggregationCollection, pipeline,{
         capturePipeline(docs) {
-
-          console.log("capturePipeline", docs.length)
-          self.added(countCollectionName, subscriptionId, {count:getCount() });
-
+          self.changed(countCollectionName, subscriptionId, {count:getCount() });
+          if(!addFieldsSupport){
+            _.each(docs,doc=>{
+              self.changed(collection._name, doc._id, {[subscriptionId]:1 });
+            })
+          }
 
         },
         noAutomaticObserver:!options.reactive,
         debounceDelay: 100,
-        debounceCount: 100000,
+        debounceCount: 10000,
         observers
       })
 
-
-
-      self.onStop(() => {
-        console.log("stop for " + subscriptionId)
-        delete subscriptions[subscriptionId]
-      })
 
     }else if (!options.reactive) {
       const subscriptionId = `sub_${self._subscriptionId}`;
